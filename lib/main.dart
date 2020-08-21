@@ -1,4 +1,4 @@
-import 'dart:async';
+// import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -11,7 +11,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Flutter Demo Graph',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -27,165 +28,68 @@ class ScreenWidget extends StatefulWidget {
 }
 
 class _ScreenWidgetState extends State<ScreenWidget> {
-  List<Body> gravityBodies = [
-    Body(Offset(500, 400), Offset(0, 0), gravity: 5000.0),
-    Body(Offset(1000, 400), Offset(0, 0), gravity: 5000.0),
-  ];
-  List<Body> normalBodies = [
-    Body(Offset(500, 100), Offset(3, 0)),
-    Body(Offset(500, 50), Offset(3, 0)),
-    Body(Offset(500, 50), Offset(-2, 0)),
-    Body(Offset(1000, 50), Offset(-2.5, 0)),
-    Body(Offset(100, 150), Offset(-1, 0)),
-    Body(Offset(1000, 245), Offset(-3, 0)),
-    Body(Offset(1000, 60), Offset(-2, 0)),
-  ];
-
-  List<List<Remnant>> pastEntries = [];
-
+  List<Body> normalBodies = [];
   Body pointInConsideration;
-  Offset velocityPoint;
+  int nodeActive;
+  bool _dragging = false;
 
-  @override
-  void initState() {
-    super.initState();
-    Timer.periodic(Duration(milliseconds: 10), (timer) {
-      setState(() {});
-    });
+  bool _insideNode(double x, double y, double xPos, double yPos) {
+    double distance = sqrt(pow(x - xPos, 2) + pow(y - yPos, 2));
+    print(distance);
+    if (distance <= 20) return true;
+    return false;
+  }
+
+  void _handleLongPress(LongPressStartDetails details) {
+    print(details.globalPosition);
+    print('nodes:');
+    for (var i = 0; i < normalBodies.length; i++) {
+      var node = normalBodies[i];
+      print(node.center);
+      var isActive = _insideNode(node.center.dx, node.center.dy,
+          details.globalPosition.dx, details.globalPosition.dy);
+      if (isActive == true) {
+        nodeActive = i;
+        _dragging = true;
+        break;
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    _calculateNewPositions();
-
     return GestureDetector(
-      onTapDown: (event) {
-        pointInConsideration = Body(event.globalPosition, Offset.zero);
-        setState(() {});
-      },
+      onLongPressStart: _handleLongPress,
       onTapUp: (event) {
+        pointInConsideration = Body(event.globalPosition, Offset.zero);
         normalBodies.add(pointInConsideration);
-        pointInConsideration = null;
-        velocityPoint = null;
         setState(() {});
       },
-      onPanUpdate: (details) {
-        if(pointInConsideration != null)
-        pointInConsideration.velocity = (pointInConsideration.center - details.globalPosition) / 20;
-        velocityPoint = details.globalPosition;
-        setState(() {});
-      },
-      onPanEnd: (event) {
-        if(pointInConsideration != null) {
-          normalBodies.add(pointInConsideration);
-          pointInConsideration = null;
-          velocityPoint = null;
+      onLongPressMoveUpdate: (event) {
+        // print(nodeActive);
+        if (_dragging == true && nodeActive != null) {
+          // print(event.globalPosition);
+          // print(normalBodies[nodeActive]);
+          normalBodies[nodeActive].center = event.globalPosition;
           setState(() {});
         }
+      },
+      onLongPressEnd: (event) {
+        // print(event.globalPosition);
+        _dragging = false;
+        nodeActive = null;
       },
       child: Stack(
         children: <Widget>[
           Container(
             child: CustomPaint(
               size: MediaQuery.of(context).size,
-              painter: SpacePainter(gravityBodies, normalBodies, pastEntries),
+              painter: Painter(normalBodies),
             ),
           ),
-          if (pointInConsideration != null)
-            Positioned(
-              left: pointInConsideration.center.dx - 5.0,
-              top: pointInConsideration.center.dy - 5.0,
-              child: CircleAvatar(
-                maxRadius: 10.0,
-                backgroundColor: pointInConsideration.color,
-              ),
-            ),
-          if (velocityPoint != null && pointInConsideration != null)
-            Positioned(
-              left: velocityPoint.dx - (pointInConsideration.center - velocityPoint).distance / 2,
-              top: velocityPoint.dy - (pointInConsideration.center - velocityPoint).distance / 2,
-              child: Transform.rotate(
-                angle: (pointInConsideration.center - velocityPoint).direction,
-                child: Icon(Icons.arrow_forward, size: (pointInConsideration.center - velocityPoint).distance,),
-              ),
-            ),
         ],
       ),
     );
-  }
-
-  void _calculateNewPositions() {
-    List<Body> newNormalList = [];
-
-    normalBodies.forEach((normalElement) {
-      var deltaX = 0.0;
-      var deltaY = 0.0;
-
-      gravityBodies.forEach((gravityElement) {
-        var dx = gravityElement.center.dx - normalElement.center.dx;
-        var dy = gravityElement.center.dy - normalElement.center.dy;
-
-        var distance = sqrt(pow(dx, 2) + pow(dy, 2));
-
-        var increase = gravityElement.gravity / pow(distance, 2);
-
-        deltaX += increase * (dx / (dx.abs() + dy.abs()));
-        deltaY += increase * (dy / (dx.abs() + dy.abs()));
-      });
-      normalElement.velocity += Offset(deltaX, deltaY);
-
-      normalElement.center = normalElement.center + normalElement.velocity;
-
-      if (!(normalElement.center.dx.abs() > 5000 || normalElement.center.dy.abs() > 5000)) {
-        newNormalList.add(normalElement);
-      }
-    });
-
-    if (pastEntries.length == 50) {
-      pastEntries.removeAt(0);
-    }
-    normalBodies = newNormalList;
-    pastEntries.add(normalBodies.map((e) => Remnant(e.center, e.color)).toList());
-
-    gravityBodies.forEach((element) {
-      element.center = element.center + element.velocity;
-    });
-  }
-}
-
-class SpacePainter extends CustomPainter {
-  List<Body> gravityBodies;
-  List<Body> normalBodies;
-  List<List<Remnant>> pastEntries;
-
-  SpacePainter(this.gravityBodies, this.normalBodies, this.pastEntries);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawPaint(Paint()..color = Colors.white);
-
-    for (var body in gravityBodies) {
-      canvas.drawCircle(body.center, 10.0, Paint()..color = Colors.black);
-    }
-
-    for (var body in normalBodies) {
-      canvas.drawCircle(body.center, 10.0, Paint()..color = body.color);
-    }
-
-    for (int i = 0; i < 50; i++) {
-      if (pastEntries.length <= i + 1) {
-        continue;
-      }
-      var bodies = pastEntries[i];
-      for (var body in bodies) {
-        canvas.drawCircle(body.offset, 1.5 + (i * 0.03), Paint()..color = body.color);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
   }
 }
 
@@ -198,9 +102,22 @@ class Body {
   Body(this.center, this.velocity, {this.gravity = 0.0});
 }
 
-class Remnant {
-  Offset offset;
-  Color color;
+class Painter extends CustomPainter {
+  List<Body> normalBodies;
 
-  Remnant(this.offset, this.color);
+  Painter(this.normalBodies);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPaint(Paint()..color = Colors.white);
+
+    for (var body in normalBodies) {
+      canvas.drawCircle(body.center, 20.0, Paint()..color = body.color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) {
+    return true;
+  }
 }
